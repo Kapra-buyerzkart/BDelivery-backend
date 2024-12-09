@@ -1,102 +1,113 @@
-/**
- * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
- */
-
-const { onRequest } = require("firebase-functions/v2/https");
-const logger = require("firebase-functions/logger");
-
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
-
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
-
 const functions = require("firebase-functions");
-
 const admin = require("firebase-admin");
-
-var serviceAccount = require("./serviceAccountKey.json");
-
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-});
-
+const serviceAccount = require("./serviceAccountKey.json");
 const express = require("express");
-
 const cors = require("cors");
 
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
 const app = express();
+const db = admin.firestore();
 
 app.use(cors({ origin: true }));
 
-const db = admin.firestore();
-
-app.get('/', (req, res) => {
-    return res.status(200).send("Hiiiiii");
+app.get("/", (req, res) => {
+  res.status(200).send("Hiiiiii");
 });
 
-app.post('/api/create', (req, res) => {
-    (async () => {
-        try {
-            await db.collection("orders").doc(`/${Date.now()}/`).create({
-                id: Date.now(),
-                name: req.body.name,
-                mobile: req.body.mobile,
-                address: req.body.address
-            });
-            return res.status(200).send({ status: "Success", msg: "Data saved" });
-        } catch (error) {
-            console.log(error);
-            return res.status(500).send({ status: "Failed", msg: error });
-        }
-    })();
+app.post("/api/create", async (req, res) => {
+  try {
+    await db.collection("orders").doc(`/${Date.now()}/`).create({
+      id: Date.now(),
+      name: req.body.name,
+      mobile: req.body.mobile,
+      address: req.body.address,
+      orderNo: req.body.orderNo,
+      latitude: req.body.latitude,
+      longitude: req.body.longitude,
+      cod: req.body.cod,
+      amount: req.body.amount
+    });
+    res.status(200).send({ status: "Success", msg: "Data saved" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ status: "Failed", msg: error.message });
+  }
 });
 
-app.get('/api/get/:id', (req, res) => {
-    (async () => {
-        try {
-            const reqDoc = db.collection('orders').doc(req.params.id)
-            let orderDetail = await reqDoc.get();
-            let response = orderDetail.data();
-            return res.status(200).send({ status: "Success", data: response })
-        } catch (error) {
-            console.log(error);
-            return res.status(500).send({ status: "Failed", msg: error });
-        }
-    })();
-})
+app.get("/api/get/:id", async (req, res) => {
+  try {
+    const orderDoc = db.collection("orders").doc(req.params.id);
+    const orderDetail = await orderDoc.get();
 
-app.get('/api/getAll', (req, res) => {
-    (async () => {
-        try {
-            const query = db.collection('orders');
-            let response = [];
+    if (!orderDetail.exists) {
+      return res.status(404).send({ status: "Failed", msg: "Order not found" });
+    }
 
-            await query.get().then((data) => {
-                let docs = data.docs;
-                docs.map((doc) => {
-                    const selectedItem = {
-                        name: doc.data().name,
-                        mobile: doc.data().mobile,
-                        address: doc.data().address
-                    };
-                    response.push(selectedItem);
-                });
-                return response
-            });
-            return res.status(200).send({ status: "Success", data: response })
-        } catch (error) {
-            console.log(error);
-            return res.status(500).send({ status: "Failed", msg: error });
-        }
-    })();
-})
+    res.status(200).send({ status: "Success", data: orderDetail.data() });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ status: "Failed", msg: error.message });
+  }
+});
+
+app.get("/api/getAll", async (req, res) => {
+  try {
+    const querySnapshot = await db.collection("orders").get();
+    const response = querySnapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        name: data.name,
+        mobile: data.mobile,
+        address: data.address,
+        orderNo: data.orderNo,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        cod: data.cod,
+        amount: data.amount
+      };
+    });
+
+    res.status(200).send({ status: "Success", data: response });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ status: "Failed", msg: error.message });
+  }
+});
+
+app.put("/api/update/:id", async (req, res) => {
+  try {
+    const orderDoc = db.collection("orders").doc(req.params.id);
+    await orderDoc.update({
+      name: req.body.name,
+      mobile: req.body.mobile,
+      address: req.body.address,
+      orderNo: req.body.orderNo,
+      latitude: req.body.latitude,
+      longitude: req.body.longitude,
+      cod: req.body.cod,
+      amount: req.body.amount
+    });
+
+    res.status(200).send({ status: "Success", msg: "Data updated" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ status: "Failed", msg: error.message });
+  }
+});
+
+app.delete("/api/delete/:id", async (req, res) => {
+  try {
+    const orderDoc = db.collection("orders").doc(req.params.id);
+    await orderDoc.delete();
+
+    res.status(200).send({ status: "Success", msg: "Data removed" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ status: "Failed", msg: error.message });
+  }
+});
 
 exports.app = functions.https.onRequest(app);
