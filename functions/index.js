@@ -1,9 +1,11 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const serviceAccount = require("./serviceAccountKey.json");
 const express = require("express");
 const cors = require("cors");
+const Joi = require("joi");
 
+// Initialize Firebase Admin SDK
+const serviceAccount = require("./serviceAccountKey.json");
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -11,33 +13,52 @@ admin.initializeApp({
 const app = express();
 const db = admin.firestore();
 
+// Middleware
 app.use(cors({ origin: true }));
+app.use(express.json());
 
-app.get("/", (req, res) => {
-  res.status(200).send("Hiiiiii");
+// Validation Schemas
+const orderSchema = Joi.object({
+  name: Joi.string().required(),
+  mobile: Joi.string().required(),
+  address: Joi.string().required(),
+  orderNo: Joi.string().required(),
+  latitude: Joi.number().required(),
+  longitude: Joi.number().required(),
+  cod: Joi.boolean().required(),
+  amount: Joi.number().required(),
 });
 
-app.post("/api/create", async (req, res) => {
+const deliveryBoySchema = Joi.object({
+  name: Joi.string().required(),
+  mobile: Joi.string().required(),
+});
+
+// Routes
+app.get("/", (req, res) => {
+  res.status(200).send("API is running");
+});
+
+// Create Order
+app.post("/api/createOrder", async (req, res) => {
+  const { error } = orderSchema.validate(req.body);
+  if (error) return res.status(400).send({ status: "Failed", msg: error.message });
+
   try {
-    await db.collection("orders").doc(`/${Date.now()}/`).create({
-      id: Date.now(),
-      name: req.body.name,
-      mobile: req.body.mobile,
-      address: req.body.address,
-      orderNo: req.body.orderNo,
-      latitude: req.body.latitude,
-      longitude: req.body.longitude,
-      cod: req.body.cod,
-      amount: req.body.amount
+    const orderId = Date.now().toString();
+    await db.collection("orders").doc(orderId).set({
+      id: orderId,
+      ...req.body,
     });
-    res.status(200).send({ status: "Success", msg: "Data saved" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ status: "Failed", msg: error.message });
+    res.status(200).send({ status: "Success", msg: "Order created successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ status: "Failed", msg: "Internal Server Error" });
   }
 });
 
-app.get("/api/get/:id", async (req, res) => {
+// Get Single Order
+app.get("/api/getOrder/:id", async (req, res) => {
   try {
     const orderDoc = db.collection("orders").doc(req.params.id);
     const orderDetail = await orderDoc.get();
@@ -47,67 +68,86 @@ app.get("/api/get/:id", async (req, res) => {
     }
 
     res.status(200).send({ status: "Success", data: orderDetail.data() });
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ status: "Failed", msg: error.message });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ status: "Failed", msg: "Internal Server Error" });
   }
 });
 
-app.get("/api/getAll", async (req, res) => {
+// Get All Orders
+app.get("/api/getAllOrders", async (req, res) => {
   try {
-    const querySnapshot = await db.collection("orders").get();
-    const response = querySnapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        name: data.name,
-        mobile: data.mobile,
-        address: data.address,
-        orderNo: data.orderNo,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        cod: data.cod,
-        amount: data.amount
-      };
-    });
+    const querySnapshot = await db.collection("orders")
+      .select("name", "mobile", "address", "orderNo", "latitude", "longitude", "cod", "amount")
+      .get();
 
+    const response = querySnapshot.docs.map((doc) => doc.data());
     res.status(200).send({ status: "Success", data: response });
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ status: "Failed", msg: error.message });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ status: "Failed", msg: "Internal Server Error" });
   }
 });
 
-app.put("/api/update/:id", async (req, res) => {
+// Update Order
+app.put("/api/updateOrder/:id", async (req, res) => {
+  const { error } = orderSchema.validate(req.body);
+  if (error) return res.status(400).send({ status: "Failed", msg: error.message });
+
   try {
     const orderDoc = db.collection("orders").doc(req.params.id);
-    await orderDoc.update({
-      name: req.body.name,
-      mobile: req.body.mobile,
-      address: req.body.address,
-      orderNo: req.body.orderNo,
-      latitude: req.body.latitude,
-      longitude: req.body.longitude,
-      cod: req.body.cod,
-      amount: req.body.amount
-    });
-
-    res.status(200).send({ status: "Success", msg: "Data updated" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ status: "Failed", msg: error.message });
+    await orderDoc.update(req.body);
+    res.status(200).send({ status: "Success", msg: "Order updated successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ status: "Failed", msg: "Internal Server Error" });
   }
 });
 
-app.delete("/api/delete/:id", async (req, res) => {
+// Delete Order
+app.delete("/api/deleteOrder/:id", async (req, res) => {
   try {
     const orderDoc = db.collection("orders").doc(req.params.id);
     await orderDoc.delete();
-
-    res.status(200).send({ status: "Success", msg: "Data removed" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ status: "Failed", msg: error.message });
+    res.status(200).send({ status: "Success", msg: "Order deleted successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ status: "Failed", msg: "Internal Server Error" });
   }
 });
 
+// Create Delivery Boy
+app.post("/api/createDeliveryBoy", async (req, res) => {
+  const { error } = deliveryBoySchema.validate(req.body);
+  if (error) {
+    return res.status(400).send({ status: "Failed", msg: error.message });
+  }
+
+  try {
+    const deliveryBoyId = req.body.mobile; // Mobile as document ID
+    const deliveryBoyDoc = db.collection("deliveryBoys").doc(deliveryBoyId);
+    const docSnapshot = await deliveryBoyDoc.get();
+
+    // Check if the mobile number already exists
+    if (docSnapshot.exists) {
+      return res.status(400).send({
+        status: "Failed",
+        msg: "Delivery boy with this mobile number already exists",
+      });
+    }
+
+    // If not, create a new document
+    await deliveryBoyDoc.set({
+      id: Date.now(),
+      ...req.body,
+    });
+
+    res.status(200).send({ status: "Success", msg: "Delivery boy created successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ status: "Failed", msg: "Internal Server Error" });
+  }
+});
+
+// Export Firebase Function
 exports.app = functions.https.onRequest(app);
