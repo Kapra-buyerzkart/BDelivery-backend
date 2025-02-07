@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const taskRoutes = require("./src/routes/taskRoutes");
+const deliveryAgentRoutes = require("./src/routes/deliveryAgentRoutes");
 
 const app = express();
 
@@ -10,6 +11,7 @@ app.use(express.json());
 
 // Routes
 app.use("/api", taskRoutes);
+app.use('/api', deliveryAgentRoutes);
 
 // Root Endpoint
 app.get("/", (req, res) => {
