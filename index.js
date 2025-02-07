@@ -22,20 +22,35 @@ app.use(cors({ origin: true }));
 app.use(express.json());
 
 // Validation Schemas
-const orderSchema = Joi.object({
-  name: Joi.string().required(),
+const taskSchema = Joi.object({
+  customerName: Joi.string().required(),
   mobile: Joi.string().required(),
-  address: Joi.string().required(),
-  orderNo: Joi.string().required(),
-  latitude: Joi.number().required(),
-  longitude: Joi.number().required(),
-  cod: Joi.boolean().required(),
-  amount: Joi.number().required(),
+  taskNo: Joi.string().required(),
+  pickupLocation: Joi.object({
+    latitude: Joi.number().required(),
+    longitude: Joi.number().required()
+  }).required(),
+  deliveryAddress: Joi.string().required(),
+  deliveryLocation: Joi.object({
+    latitude: Joi.number().required(),
+    longitude: Joi.number().required()
+  }),
+  type: Joi.string().valid("cod", "online").required(),
+  amount: Joi.when("type", {
+    is: "cod",
+    then: Joi.number().required(),
+    otherwise: Joi.forbidden(), // Prevents amount from being present if type is "online"
+  }),
+  microStoreName: Joi.string().required(),
+  storeId: Joi.string().required()
 });
 
-const deliveryBoySchema = Joi.object({
+const deliveryAgentSchema = Joi.object({
   name: Joi.string().required(),
   mobile: Joi.string().required(),
+  password: Joi.string().required(),
+  email: Joi.string().email().required(),
+  storeId: Joi.string().required()
 });
 
 // Routes
@@ -43,35 +58,35 @@ app.get("/", (req, res) => {
   res.status(200).send(`API is running on ${isLocal ? "Local DB" : "Production DB"}`);
 });
 
-// Create Order
-app.post("/api/createOrder", async (req, res) => {
-  const { error } = orderSchema.validate(req.body);
+// Create Task
+app.post("/api/createTask", async (req, res) => {
+  const { error } = taskSchema.validate(req.body);
   if (error) return res.status(400).send({ status: "Failed", msg: error.message });
 
   try {
-    const orderId = Date.now().toString();
-    await db.collection("orders").doc(orderId).set({
-      id: orderId,
+    const taskId = Date.now().toString();
+    await db.collection("tasks").doc(taskId).set({
+      id: taskId,
       ...req.body,
     });
-    res.status(200).send({ status: "Success", msg: "Order created successfully" });
+    res.status(200).send({ status: "Success", msg: "task created successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).send({ status: "Failed", msg: "Internal Server Error" });
   }
 });
 
-// Get Single Order
-app.get("/api/getOrder/:id", async (req, res) => {
+// Get Single Task
+app.get("/api/getTask/:id", async (req, res) => {
   try {
-    const orderDoc = db.collection("orders").doc(req.params.id);
-    const orderDetail = await orderDoc.get();
+    const taskDoc = db.collection("tasks").doc(req.params.id);
+    const taskDetail = await taskDoc.get();
 
-    if (!orderDetail.exists) {
-      return res.status(404).send({ status: "Failed", msg: "Order not found" });
+    if (!taskDetail.exists) {
+      return res.status(404).send({ status: "Failed", msg: "Task not found" });
     }
 
-    res.status(200).send({ status: "Success", data: orderDetail.data() });
+    res.status(200).send({ status: "Success", data: taskDetail.data() });
   } catch (err) {
     console.error(err);
     res.status(500).send({ status: "Failed", msg: "Internal Server Error" });
@@ -79,73 +94,129 @@ app.get("/api/getOrder/:id", async (req, res) => {
 });
 
 // Get All Orders
-app.get("/api/getAllOrders", async (req, res) => {
+// app.get("/api/getAllOrders", async (req, res) => {
+//   try {
+//     const querySnapshot = await db.collection("orders")
+//       .select("name", "mobile", "address", "orderNo", "latitude", "longitude", "cod", "amount", "id")
+//       .get();
+//     const response = querySnapshot.docs.map((doc) => doc.data());
+//     res.status(200).send({ status: "Success", data: response });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).send({ status: "Failed", msg: "Internal Server Error" });
+//   }
+// });
+
+app.get("/api/getAllTasks", async (req, res) => {
   try {
-    const querySnapshot = await db.collection("orders")
-      .select("name", "mobile", "address", "orderNo", "latitude", "longitude", "cod", "amount", "id")
-      .get();
-    const response = querySnapshot.docs.map((doc) => doc.data());
-    res.status(200).send({ status: "Success", data: response });
+    const { page = 1, limit = 10 } = req.query; // Default page = 1, limit = 10
+    const parsedLimit = parseInt(limit);
+    const parsedPage = parseInt(page);
+
+    if (parsedPage < 1) {
+      return res.status(400).send({ status: "Failed", msg: "Page number must be 1 or higher." });
+    }
+
+    let query = db.collection("tasks")
+      .orderBy("taskNo") // Ensure consistent ordering
+      .select("customerName", "mobile", "deliveryAddress", "taskNo", "type", "pickupLocation", "deliveryLocation", "amount", "microStoreName", "id", "storeId")
+      .limit(parsedLimit);
+
+    // Fetching the last document of the previous page (for cursor-based pagination)
+    if (parsedPage > 1) {
+      const prevPageLastDocIndex = (parsedPage - 1) * parsedLimit - 1;
+
+      // Fetch only the required documents to find the last doc of previous page
+      const prevQuerySnapshot = await db.collection("tasks")
+        .orderBy("taskNo")
+        .limit(prevPageLastDocIndex + 1) // Fetch docs up to this index
+        .get();
+
+      const prevDocs = prevQuerySnapshot.docs;
+
+      if (prevDocs.length > prevPageLastDocIndex) {
+        const lastDoc = prevDocs[prevPageLastDocIndex]; // Get last document of previous page
+        query = query.startAfter(lastDoc);
+      } else {
+        return res.status(404).send({ status: "Failed", msg: "No records found for this page." });
+      }
+    }
+
+    const querySnapshot = await query.get();
+    const tasks = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    console.log('taskssss', tasks)
+
+    res.status(200).send({
+      status: "Success",
+      data: tasks,
+      page: parsedPage,
+      limit: parsedLimit,
+    });
+
   } catch (err) {
     console.error(err);
     res.status(500).send({ status: "Failed", msg: "Internal Server Error" });
   }
 });
 
-// Update Order
-app.put("/api/updateOrder/:id", async (req, res) => {
-  const { error } = orderSchema.validate(req.body);
+// Update Task
+app.put("/api/updateTask/:id", async (req, res) => {
+  const { error } = taskSchema.validate(req.body);
   if (error) return res.status(400).send({ status: "Failed", msg: error.message });
 
   try {
-    const orderDoc = db.collection("orders").doc(req.params.id);
-    await orderDoc.update(req.body);
-    res.status(200).send({ status: "Success", msg: "Order updated successfully" });
+    const taskDoc = db.collection("tasks").doc(req.params.id);
+    await taskDoc.update(req.body);
+    res.status(200).send({ status: "Success", msg: "Task updated successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).send({ status: "Failed", msg: "Internal Server Error" });
   }
 });
 
-// Delete Order
-app.delete("/api/deleteOrder/:id", async (req, res) => {
+// Delete Task
+app.delete("/api/deleteTask/:id", async (req, res) => {
   try {
-    const orderDoc = db.collection("orders").doc(req.params.id);
-    await orderDoc.delete();
-    res.status(200).send({ status: "Success", msg: "Order deleted successfully" });
+    const taskDoc = db.collection("tasks").doc(req.params.id);
+    await taskDoc.delete();
+    res.status(200).send({ status: "Success", msg: "Task deleted successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).send({ status: "Failed", msg: "Internal Server Error" });
   }
 });
 
-// Create Delivery Boy
-app.post("/api/createDeliveryBoy", async (req, res) => {
-  const { error } = deliveryBoySchema.validate(req.body);
+// Create Delivery Agent
+app.post("/api/createDeliveryAgent", async (req, res) => {
+  const { error } = deliveryAgentSchema.validate(req.body);
   if (error) {
     return res.status(400).send({ status: "Failed", msg: error.message });
   }
 
   try {
-    const deliveryBoyId = req.body.mobile; // Mobile as document ID
-    const deliveryBoyDoc = db.collection("deliveryBoys").doc(deliveryBoyId);
-    const docSnapshot = await deliveryBoyDoc.get();
+    const deliveryAgentId = req.body.mobile; // Mobile as document ID
+    const deliveryAgentDoc = db.collection("deliveryAgents").doc(deliveryAgentId);
+    const docSnapshot = await deliveryAgentDoc.get();
 
     // Check if the mobile number already exists
     if (docSnapshot.exists) {
       return res.status(400).send({
         status: "Failed",
-        msg: "Delivery boy with this mobile number already exists",
+        msg: "Delivery agent with this mobile number already exists",
       });
     }
 
     // If not, create a new document
-    await deliveryBoyDoc.set({
+    await deliveryAgentDoc.set({
       id: Date.now(),
       ...req.body,
     });
 
-    res.status(200).send({ status: "Success", msg: "Delivery boy created successfully" });
+    res.status(200).send({ status: "Success", msg: "Delivery agent created successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).send({ status: "Failed", msg: "Internal Server Error" });
