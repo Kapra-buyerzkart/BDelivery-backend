@@ -32,3 +32,23 @@ exports.createDeliveryAgent = async (req, res) => {
         res.status(500).send({ status: "Failed", msg: "Internal Server Error" });
     }
 };
+
+exports.getAllDeliveryAgents = async (req, res) => {
+    try {
+        const deliveryAgentsRef = db.collection("deliveryAgents");
+        const snapShot = await deliveryAgentsRef.get();
+
+        if (snapShot.empty) {
+            return res.status(200).send({ status: "Success", data: [] })
+        }
+
+        const deliveryAgents = snapShot.docs.map(doc => ({
+            ...doc.data()
+        }));
+
+        res.status(200).send({ status: "Success", data: deliveryAgents });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send({ status: "Failed", msg: "Internal Server Error" })
+    }
+};
