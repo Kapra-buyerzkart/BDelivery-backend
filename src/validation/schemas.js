@@ -4,15 +4,23 @@ const taskSchema = Joi.object({
     customerName: Joi.string().required(),
     mobile: Joi.string().required(),
     taskNo: Joi.string().required(),
-    pickupLocation: Joi.object({
+    pickupAddress: Joi.object({
+        addressLineOne: Joi.string().required(),
+        addressLineTwo: Joi.string().required(),
+        addressLineThree: Joi.string().required(),
+        pincode: Joi.number().required(),
         latitude: Joi.number().required(),
         longitude: Joi.number().required(),
     }).required(),
-    deliveryAddress: Joi.string().required(),
-    deliveryLocation: Joi.object({
+    // deliveryAddress: Joi.string().required(),
+    deliveryAddress: Joi.object({
+        addressLineOne: Joi.string().required(),
+        addressLineTwo: Joi.string().required(),
+        addressLineThree: Joi.string().required(),
+        pincode: Joi.number().required(),
         latitude: Joi.number().required(),
         longitude: Joi.number().required(),
-    }),
+    }).required(),
     type: Joi.string().valid("cod", "online").required(),
     amount: Joi.when("type", {
         is: "cod",
@@ -21,6 +29,8 @@ const taskSchema = Joi.object({
     }),
     microStoreName: Joi.string().required(),
     storeId: Joi.string().required(),
+    pickupCompleted: Joi.boolean().required(),
+    deliveryCompleted: Joi.boolean().required()
 });
 
 const deliveryAgentSchema = Joi.object({
