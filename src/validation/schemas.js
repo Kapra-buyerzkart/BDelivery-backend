@@ -30,7 +30,8 @@ const taskSchema = Joi.object({
     microStoreName: Joi.string().required(),
     storeId: Joi.string().required(),
     pickupCompleted: Joi.boolean().required(),
-    deliveryCompleted: Joi.boolean().required()
+    deliveryCompleted: Joi.boolean().required(),
+    taskStatus: Joi.string().valid("pending").default("pending")
 });
 
 const deliveryAgentSchema = Joi.object({

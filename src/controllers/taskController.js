@@ -3,12 +3,12 @@ const { taskSchema } = require("../validation/schemas");
 
 // Create Task
 exports.createTask = async (req, res) => {
-    const { error } = taskSchema.validate(req.body);
+    const { error, value } = taskSchema.validate(req.body);
     if (error) return res.status(400).send({ status: "Failed", msg: error.message });
 
     try {
         const taskId = Date.now().toString();
-        await db.collection("tasks").doc(taskId).set({ id: taskId, ...req.body });
+        await db.collection("tasks").doc(taskId).set({ id: taskId, ...value });
 
         res.status(200).send({ status: "Success", msg: "Task created successfully" });
     } catch (err) {
