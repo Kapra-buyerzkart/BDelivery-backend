@@ -31,7 +31,8 @@ const taskSchema = Joi.object({
     storeId: Joi.string().required(),
     pickupCompleted: Joi.boolean().required(),
     deliveryCompleted: Joi.boolean().required(),
-    taskStatus: Joi.string().valid("pending").default("pending")
+    taskStatus: Joi.string().valid("pending").default("pending"),
+    selectedByDeliveryAgent: Joi.boolean().valid(false).default(false)
 });
 
 const deliveryAgentSchema = Joi.object({
